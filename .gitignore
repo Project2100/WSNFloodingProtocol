@@ -1,1 +1,6 @@
 *.o
+.vscode/**
+*_m.h
+*_m.cc
+CastaliaBin
+.last-copts
