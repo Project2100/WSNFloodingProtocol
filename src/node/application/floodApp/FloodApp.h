@@ -27,12 +27,12 @@ class FloodApp: public VirtualApplication {
  
 	double startupDelay;
 	double delayLimit;
-	float packet_spacing;
+	double packet_spacing;
 	int dataSN;
 	int recipientId;
 	string recipientAddress;
 	
-	std::FILE* log;
+	std::FILE* log;												/**< @brief Logging file pointer */
 	
 	//variables below are used to determine the packet delivery rates.	
 	int numNodes;

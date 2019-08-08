@@ -30,7 +30,7 @@ simple FloodApp like node.application.iApplication {
 											// application-level static routing. This way we can
 											// have a multi-hop throughput test   
 
-											
+	double packetSpacing = default (5); // Time between packet generations, in seconds
 	double startupDelay = default (0);	// delay in seconds before the app stars producing packets
 
 	double latencyHistogramMax = default (200);

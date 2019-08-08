@@ -16,10 +16,18 @@ cplusplus {{
 
 class RoutingPacket;
 
+enum PacketType {
+	RREQ = 0;
+	RREP = 1;
+	DATA = 2;
+	ACK = 3;
+}
+
 packet FloodRoutingPacket extends RoutingPacket {
+	int type enum (PacketType);
 	string source;
 	string destination;
-	string route[10];
-	int index;
+	string route[10];		// Route taken by this packet so far
+	int index;				// Route length
 }
 

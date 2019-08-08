@@ -40,7 +40,7 @@ void FloodApp::startup()
 	delayLimit = par("delayLimit");
 	
 	// In the 0 case, 
-	packet_spacing = 5;
+	packet_spacing = par("packetSpacing");
 	
 	dataSN = 0;
 	
@@ -86,6 +86,8 @@ void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
 	if (recipientAddress.compare(SELF_NETWORK_ADDRESS) == 0) {
 		
 		// This node is the final recipient for the packet
+		std::fprintf(log, "Packet is for us (Source: %s)\n", source);
+		
 		// AP190807 - NOTE: Shortcircuiting condition
 		if (delayLimit == 0 || (simTime() - rcvPacket->getCreationTime()) <= delayLimit) { 
 			trace() << "Received packet #" << sequenceNumber << " from node " << source;
@@ -99,11 +101,14 @@ void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
 		}
 	}
 	else {
-		// Packet has to be forwarded to the next hop recipient
-		ApplicationPacket* fwdPacket = rcvPacket->dup();
-		// Reset the size of the packet, otherwise the app overhead will keep adding on
-		fwdPacket->setByteLength(0);
-		toNetworkLayer(fwdPacket, recipientAddress.c_str());
+		// // Packet has to be forwarded to the next hop recipient
+		// ApplicationPacket* fwdPacket = rcvPacket->dup();
+		// // Reset the size of the packet, otherwise the app overhead will keep adding on
+		// fwdPacket->setByteLength(0);
+		// toNetworkLayer(fwdPacket, recipientAddress.c_str());
+		
+		std::fprintf(log, "Packet is not for us (Source: %s), discarding\n", source);
+
 	}
 
 	

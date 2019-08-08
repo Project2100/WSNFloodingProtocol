@@ -16,8 +16,9 @@ using namespace std;
 class FloodRouting: public VirtualRouting {
 
 private:
-	std::map<std::string, int> addressTable;
-	std::FILE* log;
+	std::FILE* log;												/**< @brief Logging file pointer */
+	std::map<std::string, int> addressTable;					/**< @brief A table, mapping every device's network address in range to its MAC address */
+	std::map<std::string, std::list<std::string>> routeTable;	/**< @brief The routing table, used only by the sink */
 
 protected:
 
