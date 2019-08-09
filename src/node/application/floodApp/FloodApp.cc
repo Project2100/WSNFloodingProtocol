@@ -48,18 +48,15 @@ void FloodApp::startup()
 	if (recipientAddress.compare(SELF_NETWORK_ADDRESS) != 0) {
 		std::fprintf(log, "Device is NOT Sink\n");
 		if (packet_spacing == 0) {
-			std::fprintf(log, "Null packet spacing, node will stay silent");
+			std::fprintf(log, "Null packet spacing, node will stay silent\n");
 		}
 		else {
-			std::fprintf(log, "Sending route request packet #%d", dataSN);
-			trace() << "Sending route request packet #" << dataSN;
-
-			setTimer(SEND_PACKET, packet_spacing + startupDelay);
+			setTimer(SEND_PACKET, startupDelay);
 		}
 	}
 	else {
-		std::fprintf(log, "Device is Sink\n");
 		// Being the sink, we wait for incoming messages
+		std::fprintf(log, "Device is Sink\n");
 		trace() << "I am the sink, listening for any messages...";
 	}
 
@@ -71,7 +68,7 @@ void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
 		const char *source, double rssi, double lqi)
 {
 	
-	std::fprintf(log, "Packet received\n");
+	std::fprintf(log, "Packet received: %s\n", rcvPacket->getName());
 
 	int sequenceNumber = rcvPacket->getSequenceNumber();
 	int sourceId = atoi(source);
@@ -95,14 +92,8 @@ void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
 		}
 	}
 	else {
-		// // Packet has to be forwarded to the next hop recipient
-		// ApplicationPacket* fwdPacket = rcvPacket->dup();
-		// // Reset the size of the packet, otherwise the app overhead will keep adding on
-		// fwdPacket->setByteLength(0);
-		// toNetworkLayer(fwdPacket, recipientAddress.c_str());
-		
-		std::fprintf(log, "Packet is not for us (Source: %s), discarding\n", source);
-
+		// Should not ever happen! These packets are dealt with in the routing layer
+		std::fprintf(log, "INTERNAL ERROR: Packet is not for us (Source: %s), discarding\n", source);
 	}
 
 	
@@ -113,7 +104,12 @@ void FloodApp::timerFiredCallback(int index)
 	switch (index) {
 		case SEND_PACKET:{
 			trace() << "Sending packet #" << dataSN;
-			toNetworkLayer(createGenericDataPacket(0, dataSN), recipientAddress.c_str());
+			auto packet = createGenericDataPacket(0, dataSN);
+			char name[64] = {0};
+			std::snprintf(name, 63, "AppPacket:%d", dataSN);
+			std::fprintf(log, "Sending packet %s\n", name);
+			packet->setName(name);
+			toNetworkLayer(packet, recipientAddress.c_str());
 			packetsSent[recipientId]++;
 			dataSN++;
 			setTimer(SEND_PACKET, packet_spacing);

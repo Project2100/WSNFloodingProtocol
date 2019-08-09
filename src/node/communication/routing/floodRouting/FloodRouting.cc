@@ -14,12 +14,26 @@ Define_Module(FloodRouting);
 
 #define PACKET_NAME_MAXCH 64
 
+#define	LOGDESC_TX "Routing packet breakdown (TX)"
+#define	LOGDESC_RX "Routing packet breakdown (RX)"
+#define LOGDESC_DATATX "New data packets"
+#define LOGDESC_OTHRTX "New other packets"
+#define LOGDESC_DATARE "Relaid data packets"
+#define LOGDESC_OTHRRE "Relaid other packets"
+#define LOGDESC_DATARX "Data packets"
+#define LOGDESC_OTHRRX "Other packets"
+#define LOGDESC_DISCRX "Discarded packets"
+#define LOGDESC_APPLRX "Packets forwarded to application layer"
+
 void FloodRouting::startup() {
 
 	// Initiate logging stream
 	char filename[64] = {0};
 	snprintf(filename, 63, "Dev%s_RoutingLog", SELF_NETWORK_ADDRESS);
 	log = std::fopen(filename, "w+");
+
+	declareOutput(LOGDESC_TX);
+	declareOutput(LOGDESC_RX);
 }
 
 
@@ -56,6 +70,7 @@ void FloodRouting::fromApplicationLayer(cPacket * pkt, const char *destination)
 		encapsulatePacket(netPacket, pkt);
 		// Unicast to first relay using our MAC cache
 		toMacLayer(netPacket, addressTable[dest]);
+		collectOutput(LOGDESC_TX, LOGDESC_DATATX);
 
 		std::fprintf(log, "Data \"%s\" sent to device %s\n\n", packetName, dest.c_str());
 	}
@@ -79,6 +94,7 @@ void FloodRouting::fromApplicationLayer(cPacket * pkt, const char *destination)
 
 		encapsulatePacket(netPacket, pkt);
 		toMacLayer(netPacket, BROADCAST_MAC_ADDRESS);
+		collectOutput(LOGDESC_TX, LOGDESC_OTHRTX);
 
 		std::fprintf(log, "Request \"%s\" broadcast to MAC layer\n\n", packetName);
 	}
@@ -118,7 +134,41 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 	//------------------------------------------------------------
 	// Select a course of action, based on the packet type
 	switch (netPacket->getType()) {
+
+	case PacketType::DATA:
+		collectOutput(LOGDESC_RX, LOGDESC_DATARX);
+	
+		// This is a regular packet, see if it reached the destination
+		if (destination.compare(SELF_NETWORK_ADDRESS) == 0) {
+			
+			// The packet has arrived, deliver it to the app layer
+			std::fprintf(log, "Data packet reached destination, delivering to application layer\n\n");
+			toApplicationLayer(decapsulatePacket(pkt));
+			collectOutput(LOGDESC_RX, LOGDESC_APPLRX);
+			
+		}
+		else {
+			
+			// If we're here, then the packet must be forwarded
+			std::fprintf(log, "Data must be relaid\n");
+
+			// Duplicate the reply and move the cursor forward
+			FloodRoutingPacket* p = netPacket->dup();
+			p->setIndex(p->getIndex() + 1);
+
+			// Check if the route is exausted
+			std::string dest = p->getRoute(p->getIndex());
+			if (dest == "") dest = destination;
+			
+			toMacLayer(p, addressTable[dest]);
+			collectOutput(LOGDESC_TX, LOGDESC_DATARE);
+			std::fprintf(log, "Data \"%s\" sent to device %s\n\n", p->getName(), dest.c_str());
+		}
+
+		break;
+
 	case PacketType::RREQ:
+		collectOutput(LOGDESC_RX, LOGDESC_OTHRRX);
 
 		// This is a route request, see if it reached the destination
 		if (destination.compare(SELF_NETWORK_ADDRESS)) {
@@ -128,11 +178,13 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			// Look if the packet has already traversed us
 			if (std::memcmp(netPacket->getSource(), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
 				std::fprintf(log, "This request came from us, discarding\n\n");
+				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 				return;
 			}
 			for (int i = 0; i < netPacket->getIndex(); i++) {
 				if (std::memcmp(netPacket->getRoute(i), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
 					std::fprintf(log, "This packet looped back to us, discarding\n\n");
+					collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 					return;
 				}
 			}
@@ -146,6 +198,7 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			p->setIndex(p->getIndex() + 1);
 			
 			toMacLayer(p, BROADCAST_MAC_ADDRESS);
+			collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
 			std::fprintf(log, "Request \"%s\" broadcast to MAC layer\n\n", p->getName());
 		}
 		else {
@@ -156,8 +209,9 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			try {
 				routeTable.at(source);
 				// AP190808: If we're here, then we've already made a route to here.
-				// 			 For now, ignore the new request, may consider different strategies in the future 
+				// 			 For now, ignore the new request, may consider different strategies in the future
 				std::fprintf(log, "Request ignored, we already have a route\n\n");
+				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 				return;
 			}
 			catch (const std::out_of_range& e) {
@@ -179,6 +233,7 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 				// Deliver the data to the application layer - keep its name
 				std::fprintf(log, "Unpacking and delivering to application\n");
 				toApplicationLayer(decapsulatePacket(pkt));
+				collectOutput(LOGDESC_RX, LOGDESC_APPLRX);
 
 				// Finally, construct the corresponding RREP to send back to the source
 				packetName[2] = 'P';
@@ -197,6 +252,7 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 				netPacket2->setIndex(0);
 
 				toMacLayer(netPacket2, addressTable[netPacket2->getRoute(netPacket2->getIndex())]);
+				collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
 
 				std::fprintf(log, "Reply \"%s\" sent to device %s\n\n", packetName, netPacket2->getRoute(netPacket2->getIndex()));
 			}
@@ -206,6 +262,7 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 		break;
 
 	case PacketType::RREP:
+		collectOutput(LOGDESC_RX, LOGDESC_OTHRRX);
 
 		// This is a route reply, see if it reached the destination
 		if (destination.compare(SELF_NETWORK_ADDRESS) == 0) {
@@ -215,7 +272,9 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			try {
 				routeTable.at(source);
 				// AP190808: If we're here, then we've already made a route to here.
-				// 			 For now, ignore the new request, may consider different strategies in the future 
+				// 			 For now, ignore the new request, may consider different strategies in the future
+				std::fprintf(log, "Reply ignored, we already have a route\n\n");
+				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 			}
 			catch (const std::out_of_range& e) {
 
@@ -239,11 +298,13 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			// Reply should be forwarded, look if the packet has already traversed us
 			if (std::memcmp(netPacket->getSource(), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
 				std::fprintf(log, "This request came from us, discarding\n\n");
+				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 				return;
 			}
 			for (int i = 0; i < netPacket->getIndex(); i++) {
 				if (std::memcmp(netPacket->getRoute(i), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
 					std::fprintf(log, "This packet looped back to us, discarding\n\n");
+					collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
 					return;
 				}
 			}
@@ -260,36 +321,8 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			if (dest == "") dest = destination;
 			
 			toMacLayer(p, addressTable[dest]);
+			collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
 			std::fprintf(log, "Reply \"%s\" sent to device %s\n\n", packetName, dest.c_str());
-		}
-
-		break;
-
-	case PacketType::DATA:
-	
-		// This is a regular packet, see if it reached the destination
-		if (destination.compare(SELF_NETWORK_ADDRESS) == 0) {
-			
-			// The packet has arrived, deliver it to the app layer
-			std::fprintf(log, "Data packet reached destination, delivering to application layer\n\n");
-			toApplicationLayer(decapsulatePacket(pkt));
-			
-		}
-		else {
-			
-			// If we're here, then the packet must be forwarded
-			std::fprintf(log, "Data must be relaid\n");
-
-			// Duplicate the reply and move the cursor forward
-			FloodRoutingPacket* p = netPacket->dup();
-			p->setIndex(p->getIndex() + 1);
-
-			// Check if the route is exausted
-			std::string dest = p->getRoute(p->getIndex());
-			if (dest == "") dest = destination;
-			
-			toMacLayer(p, addressTable[dest]);
-			std::fprintf(log, "Data \"%s\" sent to device %s\n\n", p->getName(), dest.c_str());
 		}
 
 		break;
