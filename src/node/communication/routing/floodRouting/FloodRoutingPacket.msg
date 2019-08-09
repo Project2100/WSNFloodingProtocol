@@ -1,14 +1,8 @@
-//****************************************************************************
-//*  Copyright: National ICT Australia,  2007 - 2010                         *
-//*  Developed at the ATP lab, Networked Systems research theme              *
-//*  Author(s): Yuriy Tselishchev                                            *
-//*  This file is distributed under the terms in the attached LICENSE file.  *
-//*  If you do not find this file, copies can be found by writing to:        *
-//*                                                                          *
-//*      NICTA, Locked Bag 9013, Alexandria, NSW 1435, Australia             *
-//*      Attention:  License Inquiry.                                        *
-//*                                                                          *  
-//****************************************************************************/
+///**
+// * @file FloodRoutingPacket.msg
+// * @author Andrea Proietto
+// * @date 2019-08-01
+// */
 
 cplusplus {{
 #include "RoutingPacket_m.h"
@@ -24,10 +18,10 @@ enum PacketType {
 }
 
 packet FloodRoutingPacket extends RoutingPacket {
-	int type enum (PacketType);
+	int type enum (PacketType);	// The type of this packet
 	string source;
 	string destination;
-	string route[10];		// Route taken by this packet so far
-	int index;				// Route length
+	string route[10];			// Route buffer: if packet is a request, it contains the traversed devices so far, otherwise it holds the complete route to traverse
+	int index;					// Route index: if packet is a request, it doubles as the route size, otherwise it acts as a route cursor
 }
 

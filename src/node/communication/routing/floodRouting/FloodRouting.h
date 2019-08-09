@@ -1,5 +1,9 @@
 /**
- * Flood routing protocol
+ * @file FloodRouting.h
+ * @brief Flood routing protocol implementation
+ * 
+ * @details
+ * This implementation is primarily derived from the DSR protocol
  * 
  * @author Andrea Proietto
  * @date 2019-08-01

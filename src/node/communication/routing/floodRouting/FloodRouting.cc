@@ -1,9 +1,5 @@
 /**
- * @brief Flood routing protocol implementation
- * 
- * @details
- * Implemented using notions primarily from DSR, and some from AODV
- * 
+ * @file FloodRouting.cc
  * @author Andrea Proietto
  * @date 2019-08-01
  */
