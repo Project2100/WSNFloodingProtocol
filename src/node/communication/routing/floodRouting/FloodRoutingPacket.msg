@@ -23,5 +23,6 @@ packet FloodRoutingPacket extends RoutingPacket {
 	string destination;
 	string route[10];			// Route buffer: if packet is a request, it contains the traversed devices so far, otherwise it holds the complete route to traverse
 	int index;					// Route index: if packet is a request, it doubles as the route size, otherwise it acts as a route cursor
+	int SEQ;					// Packet sequence number
 }
 

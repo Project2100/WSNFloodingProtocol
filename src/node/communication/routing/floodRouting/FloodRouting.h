@@ -5,6 +5,8 @@
  * @details
  * This implementation is primarily derived from the DSR protocol
  * 
+ * ASSERTING THE UNDERLYING FUNCTIONS ARE THREAD-SAFE!
+ * 
  * @author Andrea Proietto
  * @date 2019-08-01
  */
@@ -24,6 +26,7 @@ private:
 	std::map<std::string, int> addressTable;					/**< @brief A table, mapping every device's network address in range to its MAC address */
 	std::map<std::string, std::list<std::string>> routeTable;	/**< @brief The routing table, used only by the sink */
 	std::map<std::string, int> SEQTable;						/**< @brief A table for keeping SEQ pointers for all devices */
+	int SEQ = 0;
 
 protected:
 

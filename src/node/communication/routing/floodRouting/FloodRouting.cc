@@ -52,6 +52,7 @@ void FloodRouting::fromApplicationLayer(cPacket* pkt, const char *destination) {
 		netPacket->setSource(SELF_NETWORK_ADDRESS);
 		netPacket->setDestination(destination);
 		netPacket->setType(PacketType::DATA);
+		netPacket->setSEQ(SEQ);
 
 		// Transcribe the route into the packet header
 		int idx = 0;
@@ -69,6 +70,7 @@ void FloodRouting::fromApplicationLayer(cPacket* pkt, const char *destination) {
 		encapsulatePacket(netPacket, pkt);
 		// Unicast to first relay using our MAC cache
 		toMacLayer(netPacket, addressTable[dest]);
+		SEQ++;
 		collectOutput(LOGDESC_TX, LOGDESC_DATATX);
 
 		std::fprintf(log, "Data \"%s\" sent to device %s\n\n", packetName, dest.c_str());
@@ -84,6 +86,7 @@ void FloodRouting::fromApplicationLayer(cPacket* pkt, const char *destination) {
 		netPacket->setSource(SELF_NETWORK_ADDRESS);
 		netPacket->setDestination(destination);
 		netPacket->setType(PacketType::RREQ);
+		netPacket->setSEQ(SEQ);
 
 		// Initialize an empty route
 		for (size_t i = 0; i < 10; i++) {
@@ -93,6 +96,7 @@ void FloodRouting::fromApplicationLayer(cPacket* pkt, const char *destination) {
 
 		encapsulatePacket(netPacket, pkt);
 		toMacLayer(netPacket, BROADCAST_MAC_ADDRESS);
+		SEQ++;
 		collectOutput(LOGDESC_TX, LOGDESC_OTHRTX);
 
 		std::fprintf(log, "Request \"%s\" broadcast to MAC layer\n\n", packetName);
@@ -123,6 +127,37 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 	std::string destination(netPacket->getDestination());
 	std::string source(netPacket->getSource());
 
+	// Check source: there is no point in reading a packet we transmitted ourselves
+	if (std::memcmp(netPacket->getSource(), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
+		std::fprintf(log, "This request came from us, discarding\n\n");
+		collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
+		return;
+	}
+
+	// Sequence number check
+	int SEQn = netPacket->getSEQ();
+	
+	try {
+		int SEQm = SEQTable.at(source);
+
+		if (SEQn <= SEQm) {
+			// This packet is old, discard it
+			std::fprintf(log, "This packet has an older SEQ - tracked: %d, packet: %d - discarding\n\n", SEQm, SEQn);
+			collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
+			return;
+		}
+		else {
+			// SEQ number is valid, register it
+			// NOTE: Not dealing with failed transmissions, or any gap related phenomenon
+			SEQTable[source] = SEQn;
+		}
+
+	}
+	catch (const std::out_of_range& e) {
+		// We never got a packet from this device, register SEQ unconditionally
+		std::fprintf(log, "First time listening from %s: registering SEQ: %d\n", source.c_str(), SEQn);
+		SEQTable[source] = SEQn;
+	}
 
 	//------------------------------------------------------------
 	// Select a course of action, based on the packet type
@@ -149,9 +184,13 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 			FloodRoutingPacket* p = netPacket->dup();
 			p->setIndex(p->getIndex() + 1);
 
-			// Check if the route is exausted
-			std::string dest = p->getRoute(p->getIndex());
-			if (dest == "") dest = destination;
+			// Check if the route is exausted: this means we must use the packet's destination address instead
+			std::string dest;
+			if (p->getIndex() >= 10) dest = destination;
+			else {
+				dest = p->getRoute(p->getIndex());
+				if (dest == "") dest = destination;
+			}
 			
 			toMacLayer(p, addressTable[dest]);
 			collectOutput(LOGDESC_TX, LOGDESC_DATARE);
@@ -166,27 +205,11 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 		// This is a route request, see if it reached the destination
 		if (destination.compare(SELF_NETWORK_ADDRESS)) {
 
-			// We're not the destination, the request should be retransmitted
+			// This packet is not for us, it must be forwarded
+			std::fprintf(log, "Forwarding packet...\n");
 
-			// Look if the packet has already traversed us
-			if (std::memcmp(netPacket->getSource(), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
-				std::fprintf(log, "This request came from us, discarding\n\n");
-				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
-				return;
-			}
-			for (int i = 0; i < netPacket->getIndex(); i++) {
-				if (std::memcmp(netPacket->getRoute(i), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
-					std::fprintf(log, "This packet looped back to us, discarding\n\n");
-					collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
-					return;
-				}
-			}
-
-			// If we're here, then the packet must be forwarded
-			std::fprintf(log, "Forwarding required, destination: %s\n", destination.c_str());
-
+			// Dupe the packet, and record ourselves in the route
 			FloodRoutingPacket* p = netPacket->dup();
-
 			p->setRoute(p->getIndex(), SELF_NETWORK_ADDRESS);
 			p->setIndex(p->getIndex() + 1);
 			
@@ -234,6 +257,7 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 				netPacket2->setSource(SELF_NETWORK_ADDRESS);
 				netPacket2->setDestination(source.c_str());
 				netPacket2->setType(PacketType::RREP);
+				netPacket2->setSEQ(SEQ);
 
 				// Transcribe the new route
 				int idx = 0;
@@ -245,6 +269,7 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 				netPacket2->setIndex(0);
 
 				toMacLayer(netPacket2, addressTable[netPacket2->getRoute(netPacket2->getIndex())]);
+				SEQ++;
 				collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
 
 				std::fprintf(log, "Reply \"%s\" sent to device %s\n\n", packetName, netPacket2->getRoute(netPacket2->getIndex()));
@@ -257,7 +282,28 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 		collectOutput(LOGDESC_RX, LOGDESC_OTHRRX);
 
 		// This is a route reply, see if it reached the destination
-		if (destination.compare(SELF_NETWORK_ADDRESS) == 0) {
+		if (destination.compare(SELF_NETWORK_ADDRESS)) {
+
+			// This packet is not for us, it must be forwarded
+			std::fprintf(log, "Forwarding packet...\n");
+
+			// Dupe the reply, and move the cursor forward
+			FloodRoutingPacket* p = netPacket->dup();
+			p->setIndex(p->getIndex() + 1);
+
+			// Check if the route is exausted: this means we must use the packet's destination address instead
+			std::string dest;
+			if (p->getIndex() >= 10) dest = destination;
+			else {
+				dest = p->getRoute(p->getIndex());
+				if (dest == "") dest = destination;
+			}
+			
+			toMacLayer(p, addressTable[dest]);
+			collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
+			std::fprintf(log, "Reply \"%s\" sent to device %s\n\n", packetName, dest.c_str());
+		}
+		else {
 			std::fprintf(log, "Reply has reached destination\n");
 			
 			// The reply is home, add the route to the map and bail
@@ -285,36 +331,6 @@ void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, do
 				routeTable[source] = route;
 				std::fprintf(log, "Route saved\n\n");
 			}
-		}
-		else {
-			// Reply should be forwarded, look if the packet has already traversed us
-			if (std::memcmp(netPacket->getSource(), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
-				std::fprintf(log, "This request came from us, discarding\n\n");
-				collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
-				return;
-			}
-			for (int i = 0; i < netPacket->getIndex(); i++) {
-				if (std::memcmp(netPacket->getRoute(i), SELF_NETWORK_ADDRESS, std::strlen(netPacket->getSource())) == 0) {
-					std::fprintf(log, "This packet looped back to us, discarding\n\n");
-					collectOutput(LOGDESC_RX, LOGDESC_DISCRX);
-					return;
-				}
-			}
-
-			// If we're here, then the packet must be forwarded
-			std::fprintf(log, "Reply must be relaid\n");
-
-			// Duplicate the reply and move the cursor forward
-			FloodRoutingPacket* p = netPacket->dup();
-			p->setIndex(p->getIndex() + 1);
-
-			// Check if the route is exausted
-			std::string dest = p->getRoute(p->getIndex());
-			if (dest == "") dest = destination;
-			
-			toMacLayer(p, addressTable[dest]);
-			collectOutput(LOGDESC_TX, LOGDESC_OTHRRE);
-			std::fprintf(log, "Reply \"%s\" sent to device %s\n\n", packetName, dest.c_str());
 		}
 
 		break;
@@ -345,6 +361,12 @@ void FloodRouting::finish() {
 			std::fprintf(log, "\n");
 		}
 		
+	}
+
+	
+	std::fprintf(log, "\nSEQ mappings:\n");
+	for (auto it = SEQTable.begin(); it != SEQTable.end(); ++it) {
+		std::fprintf(log, "%s, %d\n", it->first.c_str(), it->second);
 	}
 
 	std::fclose(log);
