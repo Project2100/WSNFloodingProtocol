@@ -8,11 +8,11 @@
 
 Define_Module(FloodApp);
 
-void FloodApp::startup()
-{
+void FloodApp::startup() {
+
 	// Initiate logging stream
 	char filename[64] = {0};
-	snprintf(filename, 63, "Dev%s_AppLog", SELF_NETWORK_ADDRESS);
+	std::snprintf(filename, 63, "Dev%s_AppLog", SELF_NETWORK_ADDRESS);
 	log = std::fopen(filename, "w+");
 	
 	std::fprintf(log, "Application module is: %s\n", getParentModule()->getParentModule()->getSubmodule("node", 0)->par("ApplicationName").stringValue());
@@ -21,23 +21,16 @@ void FloodApp::startup()
 	
 	std::fprintf(log, "MAC module is: %s\n", getParentModule()->getParentModule()->getSubmodule("node", 0)->getSubmodule("Communication")->par("MACProtocolName").stringValue());
 
-
 	
 	// Gets the sink address
 	recipientAddress = par("nextRecipient").stringValue();
-
 	std::fprintf(log, "Destination is %s\n", recipientAddress.c_str());
-
-	recipientId = atoi(recipientAddress.c_str());
+	recipientId = std::atoi(recipientAddress.c_str());
 
 	startupDelay = par("startupDelay");
 	delayLimit = par("delayLimit");
-	
-	// In the 0 case, 
 	packet_spacing = par("packetSpacing");
-	
 	dataSN = 0;
-	
 	numNodes = getParentModule()->getParentModule()->par("numNodes");
 
 	// Is it necessary?
@@ -61,17 +54,14 @@ void FloodApp::startup()
 	}
 
 	declareOutput("Packets received per node");
-
 }
 
-void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
-		const char *source, double rssi, double lqi)
-{
+void FloodApp::fromNetworkLayer(ApplicationPacket* rcvPacket, const char* source, double rssi, double lqi) {
 	
 	std::fprintf(log, "Packet received: %s\n", rcvPacket->getName());
 
 	int sequenceNumber = rcvPacket->getSequenceNumber();
-	int sourceId = atoi(source);
+	int sourceId = std::atoi(source);
 
 
 	if (recipientAddress.compare(SELF_NETWORK_ADDRESS) == 0) {
@@ -95,52 +85,57 @@ void FloodApp::fromNetworkLayer(ApplicationPacket * rcvPacket,
 		// Should not ever happen! These packets are dealt with in the routing layer
 		std::fprintf(log, "INTERNAL ERROR: Packet is not for us (Source: %s), discarding\n", source);
 	}
-
 	
 }
 
-void FloodApp::timerFiredCallback(int index)
-{
+void FloodApp::timerFiredCallback(int index) {
+
 	switch (index) {
-		case SEND_PACKET:{
-			trace() << "Sending packet #" << dataSN;
-			auto packet = createGenericDataPacket(0, dataSN);
-			char name[64] = {0};
-			std::snprintf(name, 63, "AppPacket:%d", dataSN);
-			std::fprintf(log, "Sending packet %s\n", name);
-			packet->setName(name);
-			toNetworkLayer(packet, recipientAddress.c_str());
-			packetsSent[recipientId]++;
-			dataSN++;
-			setTimer(SEND_PACKET, packet_spacing);
-			break;
-		}
+	
+	case SEND_PACKET:
+
+		trace() << "Sending packet #" << dataSN;
+		auto packet = createGenericDataPacket(0, dataSN);
+		char name[64] = {0};
+		std::snprintf(name, 63, "AppPacket:%d", dataSN);
+		std::fprintf(log, "Sending packet %s\n", name);
+		packet->setName(name);
+		toNetworkLayer(packet, recipientAddress.c_str());
+		packetsSent[recipientId]++;
+		dataSN++;
+		setTimer(SEND_PACKET, packet_spacing);
+
+		break;
+
 	}
 }
 
 // This method processes a received carrier sense interupt. Used only for demo purposes
 // in some simulations. Feel free to comment out the trace command.
-void FloodApp::handleRadioControlMessage(RadioControlMessage *radioMsg)
-{
+void FloodApp::handleRadioControlMessage(RadioControlMessage* radioMsg) {
+
 	switch (radioMsg->getRadioControlMessageKind()) {
-		case CARRIER_SENSE_INTERRUPT:
-			trace() << "CS Interrupt received! current RSSI value is: " << radioModule->readRSSI();
-                        break;
+	
+	case CARRIER_SENSE_INTERRUPT:
+
+		trace() << "CS Interrupt received! current RSSI value is: " << radioModule->readRSSI();
+
+        break;
 	}
 }
 
 void FloodApp::finishSpecific() {
+
 	declareOutput("Packets reception rate");
 	declareOutput("Packets loss rate");
 
-	cTopology *topo;	// temp variable to access packets received by other nodes
+	cTopology* topo;	// temp variable to access packets received by other nodes
 	topo = new cTopology("topo");
 	topo->extractByNedTypeName(cStringTokenizer("node.Node").asVector());
 
 	long bytesDelivered = 0;
 	for (int i = 0; i < numNodes; i++) {
-		FloodApp *appModule = dynamic_cast<FloodApp*>
-			(topo->getNode(i)->getModule()->getSubmodule("Application"));
+		FloodApp* appModule = dynamic_cast<FloodApp*>(topo->getNode(i)->getModule()->getSubmodule("Application"));
 		if (appModule) {
 			int packetsSent = appModule->getPacketsSent(self);
 			if (packetsSent > 0) { // this node sent us some packets

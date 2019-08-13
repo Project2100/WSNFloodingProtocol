@@ -19,31 +19,32 @@ enum FloodAppTimers {
 };
 
 class FloodApp: public VirtualApplication {
- private:
+
+private:
  
 	double startupDelay;
 	double delayLimit;
 	double packet_spacing;
 	int dataSN;
 	int recipientId;
-	string recipientAddress;
+	std::string recipientAddress;
 	
 	std::FILE* log;												/**< @brief Logging file pointer */
 	
 	//variables below are used to determine the packet delivery rates.	
 	int numNodes;
-	map<long,int> packetsReceived;
-	map<long,int> bytesReceived;
-	map<long,int> packetsSent;
+	std::map<long,int> packetsReceived;
+	std::map<long,int> bytesReceived;
+	std::map<long,int> packetsSent;
 
- protected:
+protected:
 	void startup();
-	void fromNetworkLayer(ApplicationPacket *, const char *, double, double);
-	void handleRadioControlMessage(RadioControlMessage *);
+	void fromNetworkLayer(ApplicationPacket*, const char*, double, double);
+	void handleRadioControlMessage(RadioControlMessage*);
 	void timerFiredCallback(int);
 	void finishSpecific();
 
- public:
+public:
 	int getPacketsSent(int addr) { return packetsSent[addr]; }
 	int getPacketsReceived(int addr) { return packetsReceived[addr]; }
 	int getBytesReceived(int addr) { return bytesReceived[addr]; }

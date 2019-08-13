@@ -37,8 +37,7 @@ void FloodRouting::startup() {
 }
 
 
-void FloodRouting::fromApplicationLayer(cPacket * pkt, const char *destination)
-{
+void FloodRouting::fromApplicationLayer(cPacket* pkt, const char *destination) {
 
 	// Look up the routing table for a path to the destination
 	try {
@@ -102,12 +101,7 @@ void FloodRouting::fromApplicationLayer(cPacket * pkt, const char *destination)
 }
 
 
-void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, double lqi)
-{
-    // Receiving a packet, two scenarios:
-    // - we're not the sink: find out the packet's type (REQ/ACK), and rebroadcast accordingly
-    // - we ARE the sink: establish route, construct ACK and broadcast
-
+void FloodRouting::fromMacLayer(cPacket* pkt, int srcMacAddress, double rssi, double lqi) {
 
 	// Cast the packet
 	FloodRoutingPacket *netPacket = dynamic_cast <FloodRoutingPacket*>(pkt);
@@ -128,7 +122,6 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 	
 	std::string destination(netPacket->getDestination());
 	std::string source(netPacket->getSource());
-
 
 
 	//------------------------------------------------------------
@@ -258,7 +251,6 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 			}
 		}
 
-
 		break;
 
 	case PacketType::RREP:
@@ -328,14 +320,11 @@ void FloodRouting::fromMacLayer(cPacket * pkt, int srcMacAddress, double rssi, d
 		break;
 
 	case PacketType::ACK:
-		// TODO
+		// Unimplemented
+
 		break;
+
 	}
-
-
-	
-	
-	
 }
 
 
